@@ -31,7 +31,7 @@ else
   scripts/config --enable STATIC 2>/dev/null || true
 fi
 
-yes "" | make oldconfig >/dev/null
+make olddefconfig >/dev/null
 
 JOBS="${JOBS:-$(nproc)}"
 make -j"$JOBS"
