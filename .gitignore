@@ -1,0 +1,13 @@
+.build/
+.cache/
+out/
+*.img
+*.ext4
+*.cpio
+*.cpio.gz
+*.ko
+*.o
+*.mod
+*.mod.c
+*.symvers
+*.order

@@ -1,0 +1,98 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin
+export PATH
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+mkdir -p /run /driver /newroot /lib/modules
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+mdev -s
+
+DRIVER_DEV=""
+SYSTEM_DEV=""
+CI_MODE=0
+
+for arg in $(cat /proc/cmdline); do
+  case "$arg" in
+    driverdev=*) DRIVER_DEV="${arg#driverdev=}" ;;
+    systemdev=*) SYSTEM_DEV="${arg#systemdev=}" ;;
+    diy.ci=1) CI_MODE=1 ;;
+  esac
+done
+
+if [ -z "$DRIVER_DEV" ] || [ -z "$SYSTEM_DEV" ]; then
+  echo "DIY_BOOT_ERROR: driverdev= and systemdev= required"
+  exec sh
+fi
+
+wait_for_block() {
+  dev="$1"
+  n=0
+  while [ ! -b "$dev" ]; do
+    n=$((n + 1))
+    [ "$n" -gt 100 ] && return 1
+    sleep 0.05
+    mdev -s
+  done
+}
+
+wait_for_block "$DRIVER_DEV" || {
+  echo "DIY_BOOT_ERROR: missing $DRIVER_DEV"
+  exec sh
+}
+
+wait_for_block "$SYSTEM_DEV" || {
+  echo "DIY_BOOT_ERROR: missing $SYSTEM_DEV"
+  exec sh
+}
+
+mount -t ext4 -o ro "$DRIVER_DEV" /driver
+KREL="$(uname -r)"
+
+if [ ! -d "/driver/lib/modules/$KREL" ]; then
+  echo "DIY_BOOT_ERROR: no modules for $KREL"
+  exec sh
+fi
+
+ln -s "/driver/lib/modules/$KREL" "/lib/modules/$KREL"
+
+if [ -d /driver/lib/firmware ]; then
+  rm -rf /lib/firmware
+  ln -s /driver/lib/firmware /lib/firmware
+fi
+
+echo "DIY_DRIVER_DISK_OK"
+
+modprobe diy_hello || {
+  echo "DIY_BOOT_ERROR: diy_hello failed"
+  dmesg | tail -n 50
+  exec sh
+}
+
+dmesg | grep 'DIY_DRIVER_LOADED: diy_hello' || true
+
+mount -t ext4 -o rw "$SYSTEM_DEV" /newroot
+
+mkdir -p /newroot/run/driver-disk /newroot/lib/modules
+mount --move /driver /newroot/run/driver-disk
+
+ln -s "/run/driver-disk/lib/modules/$KREL" "/newroot/lib/modules/$KREL"
+
+rm -rf /newroot/lib/firmware
+ln -s /run/driver-disk/lib/firmware /newroot/lib/firmware
+
+if [ "$CI_MODE" -eq 1 ]; then
+  mkdir -p /newroot/run
+  touch /newroot/run/diy-ci
+fi
+
+mkdir -p /newroot/proc /newroot/sys /newroot/dev
+mount --move /proc /newroot/proc
+mount --move /sys /newroot/sys
+mount --move /dev /newroot/dev
+
+exec switch_root /newroot /sbin/init

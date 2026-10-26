@@ -1,0 +1,16 @@
+{
+  "name": "diy-linux",
+  "version": "0.1.1",
+  "target": "x86_64-uefi",
+  "kernel": {
+    "version": "6.12.114",
+    "localversion": "-diy.1"
+  },
+  "busybox": "1.36.1",
+  "windows_upload_safe": true,
+  "ci_markers": [
+    "DIY_DRIVER_DISK_OK",
+    "DIY_DRIVER_LOADED: diy_hello",
+    "DIY_SYSTEM_BOOT_OK"
+  ]
+}

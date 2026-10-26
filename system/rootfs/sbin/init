@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+
+echo "DIY_SYSTEM_INIT: starting"
+
+mkdir -p /run /tmp
+chmod 1777 /tmp
+
+[ -r /etc/motd ] && cat /etc/motd
+
+if [ -x /usr/sbin/driverctl ]; then
+  /usr/sbin/driverctl status || true
+fi
+
+echo "DIY_SYSTEM_BOOT_OK"
+
+if [ -e /run/diy-ci ]; then
+  sync
+  sleep 1
+  poweroff -f
+fi
+
+echo
+echo "Interactive shell ready."
+exec sh

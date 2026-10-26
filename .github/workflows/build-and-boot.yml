@@ -1,0 +1,51 @@
+name: Build and boot DIY Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo bash ./scripts/install-deps-ubuntu.sh
+
+      - name: Build all artifacts
+        run: make -j1 all
+
+      - name: Direct-kernel boot test
+        run: make test
+
+      - name: UEFI boot test
+        run: make test-uefi
+
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diy-linux-v0.1.1-x86_64
+          path: |
+            out/bzImage
+            out/initramfs.cpio.gz
+            out/driver.ext4
+            out/system.ext4
+            out/esp.img
+            out/kernelrelease
+            out/kernel.config
+            out/Module.symvers
+            out/module-signing-key.x509
+            out/release-manifest.json
+            out/qemu-direct.log
+            out/qemu-uefi.log
+          if-no-files-found: warn

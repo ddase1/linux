@@ -1,0 +1,96 @@
+#!/bin/sh
+set -eu
+
+DRIVER_ROOT="${DRIVER_ROOT:-/run/driver-disk}"
+KREL="$(uname -r)"
+MODROOT="$DRIVER_ROOT/lib/modules/$KREL"
+
+usage() {
+  cat <<'EOF'
+driverctl 0.1.1
+
+Usage:
+  driverctl status
+  driverctl list
+  driverctl scan
+  driverctl load <module>
+  driverctl unload <module>
+  driverctl info <module>
+  driverctl verify
+EOF
+}
+
+need_driver_disk() {
+  if [ ! -d "$DRIVER_ROOT" ]; then
+    echo "driverctl: Driver volume missing at $DRIVER_ROOT" >&2
+    exit 2
+  fi
+}
+
+cmd="${1:-help}"
+
+case "$cmd" in
+  status)
+    need_driver_disk
+    echo "driver-root: $DRIVER_ROOT"
+    echo "kernel-release: $KREL"
+    if [ -d "$MODROOT" ]; then
+      echo "abi: match"
+    else
+      echo "abi: mismatch"
+      exit 3
+    fi
+    ;;
+  list)
+    need_driver_disk
+    find "$MODROOT" -type f -name '*.ko*' 2>/dev/null \
+      | sed "s#^$MODROOT/##" | sort
+    ;;
+  scan)
+    need_driver_disk
+    echo "Hardware modaliases and candidate modules:"
+    found=0
+    for f in /sys/bus/*/devices/*/modalias /sys/devices/*/modalias; do
+      [ -r "$f" ] || continue
+      alias="$(cat "$f")"
+      mods="$(modprobe -R "$alias" 2>/dev/null || true)"
+      if [ -n "$mods" ]; then
+        printf '%s -> %s\n' "$alias" "$mods"
+        found=1
+      fi
+    done
+    [ "$found" -eq 1 ] || echo "(no candidates reported)"
+    ;;
+  load)
+    need_driver_disk
+    [ $# -eq 2 ] || { usage; exit 1; }
+    modprobe "$2"
+    ;;
+  unload)
+    [ $# -eq 2 ] || { usage; exit 1; }
+    rmmod "$2"
+    ;;
+  info)
+    need_driver_disk
+    [ $# -eq 2 ] || { usage; exit 1; }
+    grep -E "(^|/)$2\.ko" "$MODROOT/modules.dep" 2>/dev/null || true
+    ;;
+  verify)
+    need_driver_disk
+    [ -f "$DRIVER_ROOT/SHA256SUMS" ] || {
+      echo "driverctl: SHA256SUMS missing" >&2
+      exit 4
+    }
+    (
+      cd "$DRIVER_ROOT"
+      sha256sum -c SHA256SUMS
+    )
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
